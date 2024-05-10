@@ -2,7 +2,9 @@ var express = require('express'),
   path = require('path'),
   logger = require('morgan'),
   cookieParser = require('cookie-parser'),
-  bodyParser = require('body-parser');
+  bodyParser = require('body-parser'),
+  debug = require('debug')('ipfs_handler'),
+  formidable = require('formidable');
 
 var app = express();
 
@@ -20,6 +22,20 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // ADD POST REQUEST HANDLERS
+app.post('/api/ipfsdata', (req, res, next) => {
+  debug('TACA ===> /api/ipfsdata, Receive request req = ', req);
+  var form = new formidable.IncomingForm();
+
+  debug('TACA ===> /api/ipfsdata, Create form = ', form);
+  form.parse(req, (err, fields, files) => {
+    debug('POST request /api/ipfsdata, err = ', err, ', fields = ', fields, ', files = ', files);
+    if (err) {
+      next(err);
+      return;
+    }
+    res.json({ fields, files });
+  });
+});
 
 // Handle undefined routes (it must be the last route)
 app.all('*', (req, res, next) => {
