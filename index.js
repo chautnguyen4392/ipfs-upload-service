@@ -4,12 +4,15 @@ import cookieParser from 'cookie-parser';
 import bodyParser from 'body-parser';
 import log from 'debug';
 import cors from 'cors';
-import formidable from 'formidable';
+import formidable, { errors as formidableErrors } from 'formidable';
+import { create } from 'kubo-rpc-client';
+import * as fs from 'node:fs';
 
 var app = express();
 
 const debug = log('ipfs_handler');
 const PORT = 3000;
+const FILE_SIZE_LIMIT = 5 * 1024 * 1024;
 
 app.use(
   cors({
@@ -42,20 +45,53 @@ app.post('/api/ipfsdata', (req, res, next) => {
 });
 
 // API to check if the content is already existed on our server
-app.post('/api/is_content_existed', (req, res, next) => {
-  const form = formidable({});
+app.post('/api/is_content_existed', async (req, res, next) => {
   debug('TACA ===> /api/is_content_existed, Receive request req = ', req);
+  const form = formidable({ maxFileSize: FILE_SIZE_LIMIT });
 
   debug('TACA ===> /api/is_content_existed, Create form = ', form);
-  form.parse(req, (err, fields, files) => {
-    debug('POST request /api/is_content_existed, err = ', err, ', fields = ', fields, ', files = ', files);
-    if (err) {
-      next(err);
-      return;
-    }
 
-    res.json({ status: false });
-  });
+  let fields, files;
+  try {
+    [fields, files] = await form.parse(req);
+    debug('TACA ===> POST request /api/is_content_existed, fields = ', fields, ', files = ', files);
+  } catch (err) {
+    // Handle errors
+    console.error('Failed to parse form with error: ', err);
+    res.writeHead(err.httpCode || 400, { 'Content-Type': 'text/plain' });
+    if (err.code === formidableErrors.biggerThanTotalMaxFileSize) {
+      res.end(`The maximum allowable file size is ${FILE_SIZE_LIMIT} bytes. Please upload another file.`);
+    } else {
+      res.end(String(err));
+    }
+    return;
+  }
+
+  const ipfs = create();
+
+  // Get content CID
+  const path = files.file[0].filepath;
+  debug('TACA ===> POST request /api/is_content_existed, path = ', path);
+  const file = await ipfs.add(fs.createReadStream(path), { onlyHash: true });
+  debug('TACA ===> POST request /api/is_content_existed, file = ', file);
+  const fileCID = file.cid.toString();
+  debug('TACA ===> POST request /api/is_content_existed, fileCID = ', fileCID);
+
+  // Check if the content is already existed on our server
+  let isExisted = false;
+  try {
+    for await (const { cid, type } of ipfs.pin.ls({ paths: fileCID })) {
+      debug('TACA ===> POST request /api/is_content_existed, cid = ', cid, ', type = ', type);
+      isExisted = true;
+      break;
+    }
+  } catch (error) {
+    debug('TACA ===> POST request /api/is_content_existed, error = ', error);
+    isExisted = false;
+  }
+
+  debug('TACA ===> POST request /api/is_content_existed, isExisted = ', isExisted);
+  res.json({ status: isExisted });
 });
 
 // Handle undefined routes (it must be the last route)
