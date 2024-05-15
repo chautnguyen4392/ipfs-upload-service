@@ -1,14 +1,14 @@
-var express = require('express'),
-  path = require('path'),
-  logger = require('morgan'),
-  cookieParser = require('cookie-parser'),
-  bodyParser = require('body-parser'),
-  debug = require('debug')('ipfs_handler'),
-  formidable = require('formidable');
+import express from 'express';
+import logger from 'morgan';
+import cookieParser from 'cookie-parser';
+import bodyParser from 'body-parser';
+import log from 'debug';
+import cors from 'cors';
+import formidable from 'formidable';
 
 var app = express();
 
-const cors = require('cors');
+const debug = log('ipfs_handler');
 const PORT = 3000;
 
 app.use(
@@ -24,8 +24,7 @@ app.use(cookieParser());
 // API to verify timelock transaction and add the IPFS content to our storage
 app.post('/api/ipfsdata', (req, res, next) => {
   debug('TACA ===> /api/ipfsdata, Receive request req = ', req);
-  var form = new formidable.IncomingForm();
-  const formData = req.body.formdata;
+  const form = formidable({});
   const tx = req.body.timelocktx;
   debug('TACA ===> /api/ipfsdata, req.body = ', req.body);
   debug('TACA ===> /api/ipfsdata, formData = ', formData);
@@ -44,8 +43,8 @@ app.post('/api/ipfsdata', (req, res, next) => {
 
 // API to check if the content is already existed on our server
 app.post('/api/is_content_existed', (req, res, next) => {
+  const form = formidable({});
   debug('TACA ===> /api/is_content_existed, Receive request req = ', req);
-  var form = new formidable.IncomingForm();
 
   debug('TACA ===> /api/is_content_existed, Create form = ', form);
   form.parse(req, (err, fields, files) => {
