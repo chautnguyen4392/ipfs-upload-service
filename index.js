@@ -21,10 +21,15 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// ADD POST REQUEST HANDLERS
+// API to verify timelock transaction and add the IPFS content to our storage
 app.post('/api/ipfsdata', (req, res, next) => {
   debug('TACA ===> /api/ipfsdata, Receive request req = ', req);
   var form = new formidable.IncomingForm();
+  const formData = req.body.formdata;
+  const tx = req.body.timelocktx;
+  debug('TACA ===> /api/ipfsdata, req.body = ', req.body);
+  debug('TACA ===> /api/ipfsdata, formData = ', formData);
+  debug('TACA ===> /api/ipfsdata, tx = ', tx);
 
   debug('TACA ===> /api/ipfsdata, Create form = ', form);
   form.parse(req, (err, fields, files) => {
@@ -34,6 +39,23 @@ app.post('/api/ipfsdata', (req, res, next) => {
       return;
     }
     res.json({ fields, files });
+  });
+});
+
+// API to check if the content is already existed on our server
+app.post('/api/is_content_existed', (req, res, next) => {
+  debug('TACA ===> /api/is_content_existed, Receive request req = ', req);
+  var form = new formidable.IncomingForm();
+
+  debug('TACA ===> /api/is_content_existed, Create form = ', form);
+  form.parse(req, (err, fields, files) => {
+    debug('POST request /api/is_content_existed, err = ', err, ', fields = ', fields, ', files = ', files);
+    if (err) {
+      next(err);
+      return;
+    }
+
+    res.json({ status: false });
   });
 });
 
