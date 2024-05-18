@@ -16,6 +16,7 @@
     "debug": "^4.3.4",
     "express": "^4.19.2",
     "formidable": "^3.5.1",
+    "kubo-rpc-client": "^4.1.1",
     "morgan": "^1.10.0"
   }
 }
