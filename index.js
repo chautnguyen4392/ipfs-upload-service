@@ -11,7 +11,7 @@ import * as fs from 'node:fs';
 var app = express();
 
 const debug = log('ipfs_handler');
-const PORT = 3000;
+const PORT = 5002;
 const FILE_SIZE_LIMIT = 5 * 1024 * 1024;
 
 app.use(
