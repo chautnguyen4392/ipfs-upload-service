@@ -1,3 +1,4 @@
+import axios from 'axios';
 import express from 'express';
 import logger from 'morgan';
 import cookieParser from 'cookie-parser';
@@ -7,12 +8,22 @@ import cors from 'cors';
 import formidable, { errors as formidableErrors } from 'formidable';
 import { create } from 'kubo-rpc-client';
 import * as fs from 'node:fs';
+import util from 'util';
 
-var app = express();
-
-const debug = log('ipfs_handler');
+// CONST USED FOR PRODUCTION
 const PORT = 5002;
 const FILE_SIZE_LIMIT = 5 * 1024 * 1024;
+// const TIMELOCK_DURATION = 21000; // 21000 blocks
+// const TIMELOCK_AMOUNT = 2100 * 1e6; // 2100 YAC
+// const YASWAP_ENDPOINT = 'https://yaswap.yacoin.org';
+
+// CONST USED FOR TESTING
+const TIMELOCK_DURATION = 20; // 20 blocks
+const TIMELOCK_AMOUNT = 10 * 1e6; // 10 YAC
+const YASWAP_ENDPOINT = 'http://192.168.0.103:3001';
+
+var app = express();
+const debug = log('ipfs_handler');
 
 app.use(
   cors({
@@ -70,8 +81,6 @@ async function addFile(filePath) {
 app.post('/api/add_ipfs_content', async (req, res, next) => {
   debug('TACA ===> /api/add_ipfs_content, Receive request req = ', req);
   const form = formidable({ maxFileSize: FILE_SIZE_LIMIT });
-  const tx = req.body.timelocktx;
-  debug('TACA ===> /api/add_ipfs_content, tx = ', tx);
 
   // Get uploaded file from form data
   let fields, files;
@@ -80,7 +89,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     debug('TACA ===> POST request /api/add_ipfs_content, fields = ', fields, ', files = ', files);
   } catch (err) {
     // Handle errors
-    console.error('Failed to parse form with error: ', err);
+    debug('Failed to parse form with error: ', err);
     res.writeHead(err.httpCode || 400, { 'Content-Type': 'text/plain' });
     if (err.code === formidableErrors.biggerThanTotalMaxFileSize) {
       res.end(`The maximum allowable file size is ${FILE_SIZE_LIMIT} bytes. Please upload another file.`);
@@ -94,9 +103,63 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   const isExisted = await isFileExisted(files.file[0].filepath);
   if (isExisted) {
     const error = `The upload file ${files.file[0].originalFilename} was already existed on the system. Please upload another file.`;
-    console.error(error);
+    debug(error);
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end(error);
+    return;
+  }
+
+  // Get timelock tx info
+  const timelocktx = fields.timelocktx[0];
+  debug('TACA ===> /api/add_ipfs_content, timelocktx = ', timelocktx);
+
+  let txInfo;
+  try {
+    const { data } = await axios.get(`${YASWAP_ENDPOINT}/ext/gettx/${timelocktx}`);
+    txInfo = data;
+  } catch (err) {
+    const error = `Failed to get info of timelock tx ${timelocktx} with error: ${err.message}. Please contact support on discord.`;
+    debug(error);
+    res.writeHead(500, { 'Content-Type': 'text/plain' });
+    res.end(error);
+    return;
+  }
+  debug(
+    'TACA ===> /api/add_ipfs_content, txInfo = ',
+    util.inspect(txInfo, { showHidden: false, depth: null, colors: true })
+  );
+
+  // Verify timelock info
+  // TODO: Verify if the timelock transaction was already used to upload another IPFS content
+
+  // Verify if the tx timestamp isn't too old (must be within 1 day) compared to the current timestamp
+  const txTimestamp = txInfo.tx.timestamp;
+  const currentTimestamp = Math.floor(Date.now() / 1000);
+  if (txTimestamp < currentTimestamp - 24 * 60 * 60) {
+    const error = `The timestamp of time-lock YAC tx ${timelocktx} is too old compared to the current timestamp. The timestamp transaction must be within 1 day.`;
+    debug(error);
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end(error);
+    return;
+  }
+
+  // Verify lockup amount and lockup period
+  let hasTimelockUTXO = false;
+  for (const vout of txInfo.tx.vout) {
+    if (vout.amount === TIMELOCK_AMOUNT && vout.timelockUtxoInfo?.locktime === TIMELOCK_DURATION) {
+      hasTimelockUTXO = true;
+      break;
+    }
+  }
+
+  if (!hasTimelockUTXO) {
+    const error = `Can't find correct timelock UTXO in the transaction ${timelocktx}. The lockup amount must be ${
+      TIMELOCK_AMOUNT / 1e6
+    } YAC and the lockup period must be ${TIMELOCK_DURATION} blocks.`;
+    debug(error);
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end(error);
+    return;
   }
 
   // Add file
@@ -116,7 +179,7 @@ app.post('/api/is_content_existed', async (req, res, next) => {
     debug('TACA ===> POST request /api/is_content_existed, fields = ', fields, ', files = ', files);
   } catch (err) {
     // Handle errors
-    console.error('Failed to parse form with error: ', err);
+    debug('Failed to parse form with error: ', err);
     res.writeHead(err.httpCode || 400, { 'Content-Type': 'text/plain' });
     if (err.code === formidableErrors.biggerThanTotalMaxFileSize) {
       res.end(`The maximum allowable file size is ${FILE_SIZE_LIMIT} bytes. Please upload another file.`);
