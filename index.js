@@ -148,6 +148,20 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   }
   debug('timelock txInfo = ', util.inspect(txInfo, { showHidden: false, depth: null, colors: true }));
 
+  // Check if the transaction is found
+  if (txInfo.error === 'tx not found.') {
+    const error = `Can't find timelock transaction.`;
+    debug(error);
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end(error);
+    // Remove the uploaded file
+    fs.unlink(filePath, (err) => {
+      if (err) throw err;
+      debug(`${filePath} was deleted`);
+    });
+    return;
+  }
+
   // Verify timelock info
   // Verify if the timelock transaction was already used to upload another IPFS content
   const info = await TimelockInfo.findOne({ tx: timelocktx });
