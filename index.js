@@ -32,11 +32,6 @@ const TIMELOCK_AMOUNT = process.env.TIMELOCK_AMOUNT || 2100; // 2100 YAC
 const YASWAP_ENDPOINT = process.env.YASWAP_ENDPOINT || 'https://yaswap.yacoin.org';
 const MONGODB = process.env.MONGODB || 'mongodb://admin:admin@127.0.0.1:27017/ipfsuploaddb';
 
-// CONST USED FOR TESTING
-// const TIMELOCK_DURATION = 20; // 20 blocks
-// const TIMELOCK_AMOUNT = 10 * 1e6; // 10 YAC
-// const YASWAP_ENDPOINT = 'http://192.168.0.103:3001';
-
 debug('PORT = ', PORT);
 debug('FILE_SIZE_LIMIT = ', FILE_SIZE_LIMIT);
 debug('TIMELOCK_DURATION = ', TIMELOCK_DURATION);
@@ -145,7 +140,10 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     res.writeHead(500, { 'Content-Type': 'text/plain' });
     res.end(error);
     // Remove the uploaded file
-    fs.unlink(filePath);
+    fs.unlink(filePath, (err) => {
+      if (err) throw err;
+      debug(`${filePath} was deleted`);
+    });
     return;
   }
   debug('timelock txInfo = ', util.inspect(txInfo, { showHidden: false, depth: null, colors: true }));
@@ -163,7 +161,10 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end(error);
     // Remove the uploaded file
-    fs.unlink(filePath);
+    fs.unlink(filePath, (err) => {
+      if (err) throw err;
+      debug(`${filePath} was deleted`);
+    });
     return;
   }
 
@@ -176,7 +177,10 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end(error);
     // Remove the uploaded file
-    fs.unlink(filePath);
+    fs.unlink(filePath, (err) => {
+      if (err) throw err;
+      debug(`${filePath} was deleted`);
+    });
     return;
   }
 
@@ -197,7 +201,10 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end(error);
     // Remove the uploaded file
-    fs.unlink(filePath);
+    fs.unlink(filePath, (err) => {
+      if (err) throw err;
+      debug(`${filePath} was deleted`);
+    });
     return;
   }
 
@@ -214,7 +221,10 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   await newTimelockInfo.save();
 
   // Remove the uploaded file
-  fs.unlink(filePath);
+  fs.unlink(filePath, (err) => {
+    if (err) throw err;
+    debug(`${filePath} was deleted`);
+  });
   res.json({ cidv0, cidv1 });
 });
 
@@ -257,7 +267,10 @@ app.post('/api/is_content_existed', async (req, res, next) => {
   }
 
   // Remove the uploaded file
-  fs.unlink(filePath);
+  fs.unlink(filePath, (err) => {
+    if (err) throw err;
+    debug(`${filePath} was deleted`);
+  });
   res.json({ status: isExisted });
 });
 
