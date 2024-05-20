@@ -25,10 +25,10 @@ if (process.env.NODE_ENV === 'production') {
   dotenv.config({ path: './.env_dev' });
 }
 
-const PORT = process.env.PORT || 5002;
-const FILE_SIZE_LIMIT = process.env.FILE_SIZE_LIMIT || 5 * 1024 * 1024; // 5MB
-const TIMELOCK_DURATION = process.env.TIMELOCK_DURATION || 21000; // 21000 blocks
-const TIMELOCK_AMOUNT = process.env.TIMELOCK_AMOUNT || 2100; // 2100 YAC
+const PORT = Number(process.env.PORT) || 5002;
+const FILE_SIZE_LIMIT = Number(process.env.FILE_SIZE_LIMIT) || 5 * 1024 * 1024; // 5MB
+const TIMELOCK_DURATION = Number(process.env.TIMELOCK_DURATION) || 21000; // 21000 blocks
+const TIMELOCK_AMOUNT = Number(process.env.TIMELOCK_AMOUNT) || 2100; // 2100 YAC
 const YASWAP_ENDPOINT = process.env.YASWAP_ENDPOINT || 'https://yaswap.yacoin.org';
 const MONGODB = process.env.MONGODB || 'mongodb://admin:admin@127.0.0.1:27017/ipfsuploaddb';
 
@@ -39,11 +39,14 @@ debug('TIMELOCK_AMOUNT = ', TIMELOCK_AMOUNT);
 debug('YASWAP_ENDPOINT = ', YASWAP_ENDPOINT);
 debug('MONGODB = ', MONGODB);
 
+// Enable CORS
 app.use(
   cors({
     origin: '*',
   })
 );
+
+// Format client request logging
 app.use(
   logger(
     '[:date[clf]] :remote-addr - :remote-user ":method :url HTTP/:http-version" :status :response-time ms :res[content-length]'
