@@ -11,33 +11,38 @@ import * as fs from 'node:fs';
 import util from 'util';
 import mongoose from 'mongoose';
 import { TimelockInfo } from './models/timelockInfo.js';
-
-// CONST USED FOR PRODUCTION
-const PORT = 5002;
-const FILE_SIZE_LIMIT = 1 * 1024 * 1024;
-// const TIMELOCK_DURATION = 21000; // 21000 blocks
-// const TIMELOCK_AMOUNT = 2100 * 1e6; // 2100 YAC
-// const YASWAP_ENDPOINT = 'https://yaswap.yacoin.org';
-const dbSettings = {
-  user: 'admin',
-  password: 'admin',
-  database: 'ipfsuploaddb',
-  address: '127.0.0.1',
-  port: 27017,
-};
-let dbString = 'mongodb://' + dbSettings.user;
-dbString = dbString + ':' + dbSettings.password;
-dbString = dbString + '@' + dbSettings.address;
-dbString = dbString + ':' + dbSettings.port;
-dbString = dbString + '/' + dbSettings.database;
-
-// CONST USED FOR TESTING
-const TIMELOCK_DURATION = 20; // 20 blocks
-const TIMELOCK_AMOUNT = 10 * 1e6; // 10 YAC
-const YASWAP_ENDPOINT = 'http://192.168.0.103:3001';
+import dotenv from 'dotenv';
 
 let app = express();
 const debug = log('ipfs_upload_service');
+
+// CONST USED FOR PRODUCTION
+if (process.env.NODE_ENV === 'production') {
+  debug('production mode');
+  dotenv.config({ path: './.env_prod' });
+} else {
+  debug('development mode');
+  dotenv.config({ path: './.env_dev' });
+}
+
+const PORT = process.env.PORT || 5002;
+const FILE_SIZE_LIMIT = process.env.FILE_SIZE_LIMIT || 5 * 1024 * 1024; // 5MB
+const TIMELOCK_DURATION = process.env.TIMELOCK_DURATION || 21000; // 21000 blocks
+const TIMELOCK_AMOUNT = process.env.TIMELOCK_AMOUNT || 2100; // 2100 YAC
+const YASWAP_ENDPOINT = process.env.YASWAP_ENDPOINT || 'https://yaswap.yacoin.org';
+const MONGODB = process.env.MONGODB || 'mongodb://admin:admin@127.0.0.1:27017/ipfsuploaddb';
+
+// CONST USED FOR TESTING
+// const TIMELOCK_DURATION = 20; // 20 blocks
+// const TIMELOCK_AMOUNT = 10 * 1e6; // 10 YAC
+// const YASWAP_ENDPOINT = 'http://192.168.0.103:3001';
+
+debug('PORT = ', PORT);
+debug('FILE_SIZE_LIMIT = ', FILE_SIZE_LIMIT);
+debug('TIMELOCK_DURATION = ', TIMELOCK_DURATION);
+debug('TIMELOCK_AMOUNT = ', TIMELOCK_AMOUNT);
+debug('YASWAP_ENDPOINT = ', YASWAP_ENDPOINT);
+debug('MONGODB = ', MONGODB);
 
 app.use(
   cors({
@@ -292,8 +297,8 @@ process.on('uncaughtException', (err) => {
 app.set('port', PORT);
 
 // Initialize database and server
-mongoose.connect(dbString).then(() => {
-  console.log('Connected to database %s', dbString);
+mongoose.connect(MONGODB).then(() => {
+  console.log('Connected to database %s', MONGODB);
   let server = app.listen(app.get('port'), '::', function () {
     debug('Express server listening on port ' + server.address().port);
   });
