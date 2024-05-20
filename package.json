@@ -18,6 +18,7 @@
     "express": "^4.19.2",
     "formidable": "^3.5.1",
     "kubo-rpc-client": "^4.1.1",
+    "mongoose": "^8.4.0",
     "morgan": "^1.10.0"
   }
 }

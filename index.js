@@ -9,6 +9,8 @@ import formidable, { errors as formidableErrors } from 'formidable';
 import { create } from 'kubo-rpc-client';
 import * as fs from 'node:fs';
 import util from 'util';
+import mongoose from 'mongoose';
+import { TimelockInfo } from './models/timelockInfo.js';
 
 // CONST USED FOR PRODUCTION
 const PORT = 5002;
@@ -16,6 +18,18 @@ const FILE_SIZE_LIMIT = 5 * 1024 * 1024;
 // const TIMELOCK_DURATION = 21000; // 21000 blocks
 // const TIMELOCK_AMOUNT = 2100 * 1e6; // 2100 YAC
 // const YASWAP_ENDPOINT = 'https://yaswap.yacoin.org';
+const dbSettings = {
+  user: 'admin',
+  password: 'admin',
+  database: 'ipfsuploaddb',
+  address: '127.0.0.1',
+  port: 27017,
+};
+var dbString = 'mongodb://' + dbSettings.user;
+dbString = dbString + ':' + dbSettings.password;
+dbString = dbString + '@' + dbSettings.address;
+dbString = dbString + ':' + dbSettings.port;
+dbString = dbString + '/' + dbSettings.database;
 
 // CONST USED FOR TESTING
 const TIMELOCK_DURATION = 20; // 20 blocks
@@ -130,7 +144,16 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   );
 
   // Verify timelock info
-  // TODO: Verify if the timelock transaction was already used to upload another IPFS content
+  // Verify if the timelock transaction was already used to upload another IPFS content
+  const info = await TimelockInfo.findOne({ tx: timelocktx });
+  console.log('TACA ===> timelock info = ', util.inspect(info, { showHidden: false, depth: null, colors: true }));
+  if (info) {
+    const error = `Invalid timelock transaction ${timelocktx}. This transaction was already used to upload file having CIDv0 ${info.ipfs_cidv0}.`;
+    debug(error);
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end(error);
+    return;
+  }
 
   // Verify if the tx timestamp isn't too old (must be within 1 day) compared to the current timestamp
   const txTimestamp = txInfo.tx.timestamp;
@@ -164,6 +187,15 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
 
   // Add file
   const { cidv0, cidv1 } = await addFile(files.file[0].filepath);
+
+  // Add info to datbase
+  const newTimelockInfo = new TimelockInfo({
+    tx: timelocktx,
+    ipfs_cidv0: cidv0,
+    ipfs_cidv1: cidv1,
+  });
+  await newTimelockInfo.save();
+
   res.json({ cidv0, cidv1 });
 });
 
@@ -229,6 +261,11 @@ process.on('uncaughtException', (err) => {
 });
 
 app.set('port', PORT);
-var server = app.listen(app.get('port'), '::', function () {
-  debug('Express server listening on port ' + server.address().port);
+
+// Initialize database and server
+mongoose.connect(dbString).then(() => {
+  console.log('Connected to database %s', dbString);
+  var server = app.listen(app.get('port'), '::', function () {
+    debug('Express server listening on port ' + server.address().port);
+  });
 });
