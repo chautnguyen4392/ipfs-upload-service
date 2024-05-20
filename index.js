@@ -14,7 +14,7 @@ import { TimelockInfo } from './models/timelockInfo.js';
 
 // CONST USED FOR PRODUCTION
 const PORT = 5002;
-const FILE_SIZE_LIMIT = 5 * 1024 * 1024;
+const FILE_SIZE_LIMIT = 1 * 1024 * 1024;
 // const TIMELOCK_DURATION = 21000; // 21000 blocks
 // const TIMELOCK_AMOUNT = 2100 * 1e6; // 2100 YAC
 // const YASWAP_ENDPOINT = 'https://yaswap.yacoin.org';
@@ -25,7 +25,7 @@ const dbSettings = {
   address: '127.0.0.1',
   port: 27017,
 };
-var dbString = 'mongodb://' + dbSettings.user;
+let dbString = 'mongodb://' + dbSettings.user;
 dbString = dbString + ':' + dbSettings.password;
 dbString = dbString + '@' + dbSettings.address;
 dbString = dbString + ':' + dbSettings.port;
@@ -36,15 +36,19 @@ const TIMELOCK_DURATION = 20; // 20 blocks
 const TIMELOCK_AMOUNT = 10 * 1e6; // 10 YAC
 const YASWAP_ENDPOINT = 'http://192.168.0.103:3001';
 
-var app = express();
-const debug = log('ipfs_handler');
+let app = express();
+const debug = log('ipfs_upload_service');
 
 app.use(
   cors({
     origin: '*',
   })
 );
-app.use(logger('dev'));
+app.use(
+  logger(
+    '[:date[clf]] :remote-addr - :remote-user ":method :url HTTP/:http-version" :status :response-time ms :res[content-length]'
+  )
+);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -54,23 +58,16 @@ async function isFileExisted(filePath) {
   const ipfs = create();
 
   // Get content CID
-  debug('TACA ===> isFileExisted, filePath = ', filePath);
   const response = await ipfs.add(fs.createReadStream(filePath), { onlyHash: true });
-  debug('TACA ===> isFileExisted, response = ', response);
   const cidv0 = response.cid.toString();
-  const cidv1 = response.cid.toV1().toString();
-  debug('TACA ===> isFileExisted, cidv0 = ', cidv0);
-  debug('TACA ===> isFileExisted, cidv1 = ', cidv1);
 
   // Check if the content is already existed on our server
   try {
     for await (const { cid, type } of ipfs.pin.ls({ paths: cidv0 })) {
-      debug('TACA ===> isFileExisted, cid = ', cid, ', type = ', type);
       isExisted = true;
       break;
     }
   } catch (error) {
-    debug('TACA ===> isFileExisted, error = ', error);
     isExisted = false;
   }
   return isExisted;
@@ -80,27 +77,23 @@ async function addFile(filePath) {
   const ipfs = create();
 
   // Add file
-  debug('TACA ===> addFile, filePath = ', filePath);
   const response = await ipfs.add(fs.createReadStream(filePath));
-  debug('TACA ===> addFile, response = ', response);
   const cidv0 = response.cid.toString();
   const cidv1 = response.cid.toV1().toString();
-  debug('TACA ===> addFile, cidv0 = ', cidv0);
-  debug('TACA ===> addFile, cidv1 = ', cidv1);
 
   return { cidv0, cidv1 };
 }
 
 // API to verify timelock transaction and add the IPFS content to our storage
 app.post('/api/add_ipfs_content', async (req, res, next) => {
-  debug('TACA ===> /api/add_ipfs_content, Receive request req = ', req);
   const form = formidable({ maxFileSize: FILE_SIZE_LIMIT });
 
   // Get uploaded file from form data
   let fields, files;
   try {
     [fields, files] = await form.parse(req);
-    debug('TACA ===> POST request /api/add_ipfs_content, fields = ', fields, ', files = ', files);
+    debug('fields = ', util.inspect(fields, { showHidden: false, depth: null, colors: true }));
+    debug('files = ', util.inspect(files, { showHidden: false, depth: null, colors: true }));
   } catch (err) {
     // Handle errors
     debug('Failed to parse form with error: ', err);
@@ -113,8 +106,18 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     return;
   }
 
+  // Check if there is no upload file
+  if (!(files.file && files.file.length > 0 && files.file[0].filepath)) {
+    const error = `There is no upload file in the payload request.`;
+    debug(error);
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end(error);
+    return;
+  }
+  const filePath = files.file[0].filepath;
+
   // Check if the content is already existed on our server
-  const isExisted = await isFileExisted(files.file[0].filepath);
+  const isExisted = await isFileExisted(filePath);
   if (isExisted) {
     const error = `The upload file ${files.file[0].originalFilename} was already existed on the system. Please upload another file.`;
     debug(error);
@@ -125,7 +128,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
 
   // Get timelock tx info
   const timelocktx = fields.timelocktx[0];
-  debug('TACA ===> /api/add_ipfs_content, timelocktx = ', timelocktx);
+  debug('timelocktx = ', timelocktx);
 
   let txInfo;
   try {
@@ -136,22 +139,26 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     debug(error);
     res.writeHead(500, { 'Content-Type': 'text/plain' });
     res.end(error);
+    // Remove the uploaded file
+    fs.unlink(filePath);
     return;
   }
-  debug(
-    'TACA ===> /api/add_ipfs_content, txInfo = ',
-    util.inspect(txInfo, { showHidden: false, depth: null, colors: true })
-  );
+  debug('timelock txInfo = ', util.inspect(txInfo, { showHidden: false, depth: null, colors: true }));
 
   // Verify timelock info
   // Verify if the timelock transaction was already used to upload another IPFS content
   const info = await TimelockInfo.findOne({ tx: timelocktx });
-  console.log('TACA ===> timelock info = ', util.inspect(info, { showHidden: false, depth: null, colors: true }));
+  console.log(
+    'get timelock info from database = ',
+    util.inspect(info, { showHidden: false, depth: null, colors: true })
+  );
   if (info) {
     const error = `Invalid timelock transaction ${timelocktx}. This transaction was already used to upload file having CIDv0 ${info.ipfs_cidv0}.`;
     debug(error);
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end(error);
+    // Remove the uploaded file
+    fs.unlink(filePath);
     return;
   }
 
@@ -163,6 +170,8 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     debug(error);
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end(error);
+    // Remove the uploaded file
+    fs.unlink(filePath);
     return;
   }
 
@@ -182,11 +191,14 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     debug(error);
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end(error);
+    // Remove the uploaded file
+    fs.unlink(filePath);
     return;
   }
 
   // Add file
-  const { cidv0, cidv1 } = await addFile(files.file[0].filepath);
+  const { cidv0, cidv1 } = await addFile(filePath);
+  debug(`Added ${cidv0} to IPFS storage`);
 
   // Add info to datbase
   const newTimelockInfo = new TimelockInfo({
@@ -196,19 +208,21 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   });
   await newTimelockInfo.save();
 
+  // Remove the uploaded file
+  fs.unlink(filePath);
   res.json({ cidv0, cidv1 });
 });
 
 // API to check if the content is already existed on our server
 app.post('/api/is_content_existed', async (req, res, next) => {
-  debug('TACA ===> /api/is_content_existed, Receive request req = ', req);
   const form = formidable({ maxFileSize: FILE_SIZE_LIMIT });
 
   // Get uploaded file from form data
   let fields, files;
   try {
     [fields, files] = await form.parse(req);
-    debug('TACA ===> POST request /api/is_content_existed, fields = ', fields, ', files = ', files);
+    debug('fields = ', util.inspect(fields, { showHidden: false, depth: null, colors: true }));
+    debug('files = ', util.inspect(files, { showHidden: false, depth: null, colors: true }));
   } catch (err) {
     // Handle errors
     debug('Failed to parse form with error: ', err);
@@ -221,9 +235,24 @@ app.post('/api/is_content_existed', async (req, res, next) => {
     return;
   }
 
+  // Check if there is no upload file
+  if (!(files.file && files.file.length > 0 && files.file[0].filepath)) {
+    const error = `There is no upload file in the payload request.`;
+    debug(error);
+    res.writeHead(400, { 'Content-Type': 'text/plain' });
+    res.end(error);
+    return;
+  }
+  const filePath = files.file[0].filepath;
+
   // Check if the content is already existed on our server
-  const isExisted = await isFileExisted(files.file[0].filepath);
-  debug('TACA ===> POST request /api/is_content_existed, isExisted = ', isExisted);
+  const isExisted = await isFileExisted(filePath);
+  if (isExisted) {
+    debug(`The upload file ${files.file[0].originalFilename} was already existed on the system.`);
+  }
+
+  // Remove the uploaded file
+  fs.unlink(filePath);
   res.json({ status: isExisted });
 });
 
@@ -265,7 +294,7 @@ app.set('port', PORT);
 // Initialize database and server
 mongoose.connect(dbString).then(() => {
   console.log('Connected to database %s', dbString);
-  var server = app.listen(app.get('port'), '::', function () {
+  let server = app.listen(app.get('port'), '::', function () {
     debug('Express server listening on port ' + server.address().port);
   });
 });
