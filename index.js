@@ -73,7 +73,7 @@ async function isFileExisted(filePath) {
   } catch (error) {
     isExisted = false;
   }
-  return isExisted;
+  return { isExisted, cidv0 };
 }
 
 async function addFile(filePath) {
@@ -120,9 +120,9 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   const filePath = files.file[0].filepath;
 
   // Check if the content is already existed on our server
-  const isExisted = await isFileExisted(filePath);
+  const { isExisted, cidv0: cid } = await isFileExisted(filePath);
   if (isExisted) {
-    const error = `The upload file ${files.file[0].originalFilename} was already existed on the system. Please upload another file.`;
+    const error = `The upload file ${files.file[0].originalFilename} was already existed on the system. Its CID version 0 is ${cid}. Please upload another file.`;
     debug(error);
     res.writeHead(400, { 'Content-Type': 'text/plain' });
     res.end(error);
@@ -278,7 +278,7 @@ app.post('/api/is_content_existed', async (req, res, next) => {
   const filePath = files.file[0].filepath;
 
   // Check if the content is already existed on our server
-  const isExisted = await isFileExisted(filePath);
+  const { isExisted, cidv0 } = await isFileExisted(filePath);
   if (isExisted) {
     debug(`The upload file ${files.file[0].originalFilename} was already existed on the system.`);
   }
@@ -288,7 +288,7 @@ app.post('/api/is_content_existed', async (req, res, next) => {
     if (err) throw err;
     debug(`${filePath} was deleted`);
   });
-  res.json({ status: isExisted });
+  res.json({ status: isExisted, cidv0 });
 });
 
 // Handle undefined routes (it must be the last route)
