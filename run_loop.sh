@@ -4,6 +4,8 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd $SCRIPT_DIR
 nvm use
 
-echo "Start ipfs upload service !!!" >> output.log
-npm start >> output.log
-
+while true; do
+    sleep 1
+    npm start >> output.log
+    echo "Restart ipfs upload service !!!" >> output.log
+done
