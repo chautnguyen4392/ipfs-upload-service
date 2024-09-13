@@ -63,6 +63,7 @@ async function isFileExisted(filePath) {
   // Get content CID
   const response = await ipfs.add(fs.createReadStream(filePath), { onlyHash: true });
   const cidv0 = response.cid.toString();
+  const cidv1 = response.cid.toV1().toString();
 
   // Check if the content is already existed on our server
   try {
@@ -73,7 +74,7 @@ async function isFileExisted(filePath) {
   } catch (error) {
     isExisted = false;
   }
-  return { isExisted, cidv0 };
+  return { isExisted, cidv0, cidv1 };
 }
 
 async function addFile(filePath) {
@@ -120,12 +121,11 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   const filePath = files.file[0].filepath;
 
   // Check if the content is already existed on our server
-  const { isExisted, cidv0: cid } = await isFileExisted(filePath);
+  const { isExisted, cidv0: cid0, cidv1: cid1 } = await isFileExisted(filePath);
   if (isExisted) {
-    const error = `The upload file ${files.file[0].originalFilename} was already existed on the system. Its CID version 0 is ${cid}. Please upload another file.`;
+    const error = `The upload file ${files.file[0].originalFilename} was already existed on the system.`
     debug(error);
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end(error);
+    res.status(400).json({ error, cidv0, cidv1 });
     return;
   }
 
@@ -229,7 +229,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   const { cidv0, cidv1 } = await addFile(filePath);
   debug(`Added ${cidv0} to IPFS storage`);
 
-  // Add info to datbase
+  // Add info to database
   const newTimelockInfo = new TimelockInfo({
     tx: timelocktx,
     ipfs_cidv0: cidv0,
@@ -278,17 +278,21 @@ app.post('/api/is_content_existed', async (req, res, next) => {
   const filePath = files.file[0].filepath;
 
   // Check if the content is already existed on our server
-  const { isExisted, cidv0 } = await isFileExisted(filePath);
-  if (isExisted) {
-    debug(`The upload file ${files.file[0].originalFilename} was already existed on the system.`);
-  }
-
+  const { isExisted, cidv0, cidv1 } = await isFileExisted(filePath);
   // Remove the uploaded file
   fs.unlink(filePath, (err) => {
     if (err) throw err;
     debug(`${filePath} was deleted`);
   });
-  res.json({ status: isExisted, cidv0 });
+
+  if (isExisted) {
+    const message = `The upload file ${files.file[0].originalFilename} was already existed on the system.`
+    debug(message);
+    res.status(200).json({ message, cidv0, cidv1 });
+  } else {
+    const message = `Can't find content on this server.`
+    res.status(404).json({ message, cidv0, cidv1 });
+  }
 });
 
 // Handle undefined routes (it must be the last route)
