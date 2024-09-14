@@ -128,8 +128,16 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   }
 
   // Get timelock tx info
-  const timelocktx = fields.timelocktx[0];
-  debug('timelocktx = ', timelocktx);
+  let timelocktx
+  if (fields.timelocktx) {
+    timelocktx = fields.timelocktx[0];
+    debug('timelocktx = ', timelocktx);
+  } else {
+    const message = `There is no timelock transaction (timelocktx) in the payload request.`;
+    debug(message);
+    res.status(400).json({ message });
+    return
+  }
 
   let txInfo;
   try {
@@ -150,7 +158,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
 
   // Check if the transaction is found
   if (txInfo.error === 'tx not found.') {
-    const message = `Can't find timelock transaction.`;
+    const message = `Can't find timelock transaction ${timelocktx}.`;
     debug(message);
     res.status(400).json({ message });
     // Remove the uploaded file
