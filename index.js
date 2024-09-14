@@ -101,21 +101,19 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   } catch (err) {
     // Handle errors
     debug('Failed to parse form with error: ', err);
-    res.writeHead(err.httpCode || 400, { 'Content-Type': 'text/plain' });
-    if (err.code === formidableErrors.biggerThanTotalMaxFileSize) {
-      res.end(`The maximum allowable file size is ${FILE_SIZE_LIMIT} bytes. Please upload another file.`);
-    } else {
-      res.end(String(err));
-    }
+    const message =
+      err.code === formidableErrors.biggerThanTotalMaxFileSize
+        ? `The maximum allowable file size is ${FILE_SIZE_LIMIT} bytes. Please upload another file.`
+        : String(err);
+    res.status(err.httpCode || 400).json({ message });
     return;
   }
 
   // Check if there is no upload file
   if (!(files.file && files.file.length > 0 && files.file[0].filepath)) {
-    const error = `There is no upload file in the payload request.`;
-    debug(error);
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end(error);
+    const message = `There is no upload file in the payload request.`;
+    debug(message);
+    res.status(400).json({ message });
     return;
   }
   const filePath = files.file[0].filepath;
@@ -123,9 +121,9 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   // Check if the content is already existed on our server
   const { isExisted, cidv0: cid0, cidv1: cid1 } = await isFileExisted(filePath);
   if (isExisted) {
-    const error = `The upload file ${files.file[0].originalFilename} was already existed on the system.`
-    debug(error);
-    res.status(400).json({ error, cidv0, cidv1 });
+    const message = `The upload file ${files.file[0].originalFilename} was already existed on the system.`;
+    debug(message);
+    res.status(400).json({ message, cid0, cid1 });
     return;
   }
 
@@ -138,10 +136,9 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     const { data } = await axios.get(`${YASWAP_ENDPOINT}/ext/gettx/${timelocktx}`);
     txInfo = data;
   } catch (err) {
-    const error = `Failed to get info of timelock tx ${timelocktx} with error: ${err.message}. Please contact support on discord.`;
-    debug(error);
-    res.writeHead(500, { 'Content-Type': 'text/plain' });
-    res.end(error);
+    const message = `Failed to get info of timelock tx ${timelocktx} with error: ${err.message}. Please contact support on discord.`;
+    debug(message);
+    res.status(500).json({ message });
     // Remove the uploaded file
     fs.unlink(filePath, (err) => {
       if (err) throw err;
@@ -153,10 +150,9 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
 
   // Check if the transaction is found
   if (txInfo.error === 'tx not found.') {
-    const error = `Can't find timelock transaction.`;
-    debug(error);
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end(error);
+    const message = `Can't find timelock transaction.`;
+    debug(message);
+    res.status(400).json({ message });
     // Remove the uploaded file
     fs.unlink(filePath, (err) => {
       if (err) throw err;
@@ -173,10 +169,9 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     util.inspect(info, { showHidden: false, depth: null, colors: true })
   );
   if (info) {
-    const error = `Invalid timelock transaction ${timelocktx}. This transaction was already used to upload file having CIDv0 ${info.ipfs_cidv0}.`;
-    debug(error);
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end(error);
+    const message = `Invalid timelock transaction ${timelocktx}. This transaction was already used to upload file having CIDv0 ${info.ipfs_cidv0}.`;
+    debug(message);
+    res.status(400).json({ message });
     // Remove the uploaded file
     fs.unlink(filePath, (err) => {
       if (err) throw err;
@@ -189,10 +184,9 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   const txTimestamp = txInfo.tx.timestamp;
   const currentTimestamp = Math.floor(Date.now() / 1000);
   if (txTimestamp < currentTimestamp - 24 * 60 * 60) {
-    const error = `The timestamp of time-lock YAC tx ${timelocktx} is too old compared to the current timestamp. The timestamp transaction must be within 1 day.`;
-    debug(error);
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end(error);
+    const message = `The timestamp of time-lock YAC tx ${timelocktx} is too old compared to the current timestamp. The timestamp transaction must be within 1 day.`;
+    debug(message);
+    res.status(400).json({ message });
     // Remove the uploaded file
     fs.unlink(filePath, (err) => {
       if (err) throw err;
@@ -211,12 +205,11 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   }
 
   if (!hasTimelockUTXO) {
-    const error = `Can't find correct timelock UTXO in the transaction ${timelocktx}. The lockup amount must be ${
+    const message = `Can't find correct timelock UTXO in the transaction ${timelocktx}. The lockup amount must be ${
       TIMELOCK_AMOUNT / 1e6
     } YAC and the lockup period must be ${TIMELOCK_DURATION} blocks.`;
-    debug(error);
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end(error);
+    debug(message);
+    res.status(400).json({ message });
     // Remove the uploaded file
     fs.unlink(filePath, (err) => {
       if (err) throw err;
@@ -227,7 +220,8 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
 
   // Add file
   const { cidv0, cidv1 } = await addFile(filePath);
-  debug(`Added ${cidv0} to IPFS storage`);
+  const message = `Added ${cidv0} to IPFS storage`;
+  debug(message);
 
   // Add info to database
   const newTimelockInfo = new TimelockInfo({
@@ -242,7 +236,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     if (err) throw err;
     debug(`${filePath} was deleted`);
   });
-  res.json({ cidv0, cidv1 });
+  res.status(200).json({ message, cidv0, cidv1 });
 });
 
 // API to check if the content is already existed on our server
@@ -258,21 +252,19 @@ app.post('/api/is_content_existed', async (req, res, next) => {
   } catch (err) {
     // Handle errors
     debug('Failed to parse form with error: ', err);
-    res.writeHead(err.httpCode || 400, { 'Content-Type': 'text/plain' });
-    if (err.code === formidableErrors.biggerThanTotalMaxFileSize) {
-      res.end(`The maximum allowable file size is ${FILE_SIZE_LIMIT} bytes. Please upload another file.`);
-    } else {
-      res.end(String(err));
-    }
+    const message =
+      err.code === formidableErrors.biggerThanTotalMaxFileSize
+        ? `The maximum allowable file size is ${FILE_SIZE_LIMIT} bytes. Please upload another file.`
+        : String(err);
+    res.status(err.httpCode || 400).json({ message });
     return;
   }
 
   // Check if there is no upload file
   if (!(files.file && files.file.length > 0 && files.file[0].filepath)) {
-    const error = `There is no upload file in the payload request.`;
-    debug(error);
-    res.writeHead(400, { 'Content-Type': 'text/plain' });
-    res.end(error);
+    const message = `There is no upload file in the payload request.`;
+    debug(message);
+    res.status(400).json({ message });
     return;
   }
   const filePath = files.file[0].filepath;
@@ -286,11 +278,11 @@ app.post('/api/is_content_existed', async (req, res, next) => {
   });
 
   if (isExisted) {
-    const message = `The upload file ${files.file[0].originalFilename} was already existed on the system.`
+    const message = `The upload file ${files.file[0].originalFilename} was already existed on the system.`;
     debug(message);
     res.status(200).json({ message, cidv0, cidv1 });
   } else {
-    const message = `Can't find content on this server.`
+    const message = `Can't find content on this server.`;
     res.status(404).json({ message, cidv0, cidv1 });
   }
 });
@@ -299,7 +291,11 @@ app.post('/api/is_content_existed', async (req, res, next) => {
 app.all('*', (req, res, next) => {
   const err = new Error(`Can't find ${req.originalUrl} on this server!`);
   err.statusCode = 404;
-  err.status = 'fail';
+  err.status = 'Not found';
+  res.status(404).json({
+    status: err.status,
+    message: err.message,
+  });
   next(err);
 });
 
