@@ -12,6 +12,7 @@ import util from 'util';
 import mongoose from 'mongoose';
 import { TimelockInfo } from './models/timelockInfo.js';
 import dotenv from 'dotenv';
+import { ObjectManager } from "@filebase/sdk";
 
 let app = express();
 const debug = log('ipfs_upload_service');
@@ -31,6 +32,8 @@ const TIMELOCK_DURATION = Number(process.env.TIMELOCK_DURATION) || 21000; // 210
 const TIMELOCK_AMOUNT = Number(process.env.TIMELOCK_AMOUNT) || 2100; // 2100 YAC
 const YASWAP_ENDPOINT = process.env.YASWAP_ENDPOINT || 'https://yaswap.yacoin.org';
 const MONGODB = process.env.MONGODB || 'mongodb://admin:admin@127.0.0.1:27017/ipfsuploaddb';
+const S3_KEY = process.env.S3_KEY;
+const S3_SECRET = process.env.S3_SECRET;
 
 debug('PORT = ', PORT);
 debug('FILE_SIZE_LIMIT = ', FILE_SIZE_LIMIT);
@@ -239,6 +242,26 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
   });
   await newTimelockInfo.save();
 
+  // Upload to the filebase
+  const objectManager = new ObjectManager(S3_KEY, S3_SECRET, {
+    bucket: "cbdigi"
+  });
+  const isAlreadyUploaded = await objectManager.get(cidv0);
+  if (isAlreadyUploaded) {
+    debug(`${cidv0} is already existed on Filebase storage.`);
+  } else {
+    debug(`Uploading ${cidv0} to Filebase storage.`);
+    try {
+      await objectManager.upload(
+        cidv0,
+        fs.createReadStream(filePath)
+      );
+      debug(`Uploaded ${cidv0} to Filebase storage successfully.`);
+    } catch (error) {
+      debug(`Failed to upload ${cidv0} to Filebase storage.`);
+    }
+  }
+  
   // Remove the uploaded file
   fs.unlink(filePath, (err) => {
     if (err) throw err;
