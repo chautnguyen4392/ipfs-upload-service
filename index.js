@@ -318,6 +318,15 @@ app.post('/api/is_content_existed', async (req, res, next) => {
   }
 });
 
+// API to get the status of the service
+app.get('/api/status', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'IPFS upload service is running',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Handle undefined routes (it must be the last route)
 app.all('*', (req, res, next) => {
   const err = new Error(`Can't find ${req.originalUrl} on this server!`);
