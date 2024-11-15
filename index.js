@@ -91,6 +91,13 @@ async function addFile(filePath) {
   return { cidv0, cidv1 };
 }
 
+function removeUploadedFile(filePath) {
+  fs.unlink(filePath, (err) => {
+    if (err) throw err;
+    debug(`${filePath} was deleted`);
+  });
+}
+
 // API to verify timelock transaction and add the IPFS content to our storage
 app.post('/api/add_ipfs_content', async (req, res, next) => {
   const form = formidable({ maxFileSize: FILE_SIZE_LIMIT });
@@ -127,6 +134,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     const message = `The upload file ${files.file[0].originalFilename} was already existed on the system.`;
     debug(message);
     res.status(400).json({ message, cid0, cid1 });
+    removeUploadedFile(filePath);
     return;
   }
 
@@ -139,6 +147,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     const message = `There is no timelock transaction (timelocktx) in the payload request.`;
     debug(message);
     res.status(400).json({ message });
+    removeUploadedFile(filePath);
     return
   }
 
@@ -150,11 +159,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     const message = `Failed to get info of timelock tx ${timelocktx} with error: ${err.message}. Please contact support on discord.`;
     debug(message);
     res.status(500).json({ message });
-    // Remove the uploaded file
-    fs.unlink(filePath, (err) => {
-      if (err) throw err;
-      debug(`${filePath} was deleted`);
-    });
+    removeUploadedFile(filePath);
     return;
   }
   debug('timelock txInfo = ', util.inspect(txInfo, { showHidden: false, depth: null, colors: true }));
@@ -164,11 +169,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     const message = `Can't find timelock transaction ${timelocktx}.`;
     debug(message);
     res.status(400).json({ message });
-    // Remove the uploaded file
-    fs.unlink(filePath, (err) => {
-      if (err) throw err;
-      debug(`${filePath} was deleted`);
-    });
+    removeUploadedFile(filePath);
     return;
   }
 
@@ -183,11 +184,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     const message = `Invalid timelock transaction ${timelocktx}. This transaction was already used to upload file having CIDv0 ${info.ipfs_cidv0}.`;
     debug(message);
     res.status(400).json({ message });
-    // Remove the uploaded file
-    fs.unlink(filePath, (err) => {
-      if (err) throw err;
-      debug(`${filePath} was deleted`);
-    });
+    removeUploadedFile(filePath);
     return;
   }
 
@@ -198,11 +195,7 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     const message = `The timestamp of time-lock YAC tx ${timelocktx} is too old compared to the current timestamp. The timestamp transaction must be within 1 day.`;
     debug(message);
     res.status(400).json({ message });
-    // Remove the uploaded file
-    fs.unlink(filePath, (err) => {
-      if (err) throw err;
-      debug(`${filePath} was deleted`);
-    });
+    removeUploadedFile(filePath);
     return;
   }
 
@@ -221,32 +214,52 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
     } YAC and the lockup period must be ${TIMELOCK_DURATION} blocks.`;
     debug(message);
     res.status(400).json({ message });
-    // Remove the uploaded file
-    fs.unlink(filePath, (err) => {
-      if (err) throw err;
-      debug(`${filePath} was deleted`);
-    });
+    removeUploadedFile(filePath);
     return;
   }
 
   // Add file
-  const { cidv0, cidv1 } = await addFile(filePath);
-  const message = `Added ${cidv0} to IPFS storage`;
-  debug(message);
+  let cidv0, cidv1;
+  try {
+    ({ cidv0, cidv1 } = await addFile(filePath));
+    const message = `Added ${cidv0} to IPFS storage`;
+    debug(message);
+    res.status(200).json({ message, cidv0, cidv1 });
+  } catch (err) {
+    const message = `Failed to add file to IPFS with error: ${err.message}`;
+    debug(message);
+    res.status(500).json({ message });
+    removeUploadedFile(filePath);
+    return;
+  }
 
+  // The IPFS content already added to the server
+  // The remaining logic doesn't affect the response status
   // Add info to database
   const newTimelockInfo = new TimelockInfo({
     tx: timelocktx,
     ipfs_cidv0: cidv0,
     ipfs_cidv1: cidv1,
   });
-  await newTimelockInfo.save();
+  try {
+    await newTimelockInfo.save();
+  } catch (err) {
+    debug(`Failed to save timelock info to the database with error: ${err.message}.`);
+  }
 
   // Upload to the filebase
   const objectManager = new ObjectManager(S3_KEY, S3_SECRET, {
     bucket: "cbdigi"
   });
-  const isAlreadyUploaded = await objectManager.get(cidv0);
+
+  let isAlreadyUploaded;
+  try {
+    isAlreadyUploaded = await objectManager.get(cidv0);
+  } catch (error) {
+    debug(`Failed to check if ${cidv0} is already uploaded to Filebase storage.`);
+    isAlreadyUploaded = false;
+  }
+
   if (isAlreadyUploaded) {
     debug(`${cidv0} is already existed on Filebase storage.`);
   } else {
@@ -261,13 +274,8 @@ app.post('/api/add_ipfs_content', async (req, res, next) => {
       debug(`Failed to upload ${cidv0} to Filebase storage.`);
     }
   }
-  
-  // Remove the uploaded file
-  fs.unlink(filePath, (err) => {
-    if (err) throw err;
-    debug(`${filePath} was deleted`);
-  });
-  res.status(200).json({ message, cidv0, cidv1 });
+
+  removeUploadedFile(filePath);
 });
 
 // API to check if the content is already existed on our server
